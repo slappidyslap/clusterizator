@@ -5,6 +5,7 @@ import com.opencsv.CSVWriter;
 import com.opencsv.exceptions.CsvException;
 
 import java.io.*;
+import java.nio.charset.Charset;
 import java.util.*;
 import java.util.regex.*;
 import java.util.stream.Collectors;
@@ -12,17 +13,19 @@ import java.util.stream.Collectors;
 import static java.lang.Integer.parseInt;
 
 public class Main {
-    private static final Map<String, List<String>> groups = new LinkedHashMap<>(); // FIXME optimize
+    private static final Map<String, List<String[]>> groups = new HashMap<>(); // FIXME optimize
     private static final Map<Integer, List<Integer>> groupHierarchy = new HashMap<>();
     private static int currentGroupId = 0; // Unique group ID counter
     private static List<String[]> csvData = new ArrayList<>();
     private static String[] headers;
+    private static List<String[]> unclusteredKeywords = new ArrayList<>(); // Некластеризованные строки
+
 
     private static final CSVWriter writer;
 
     static {
         try {
-            writer = new CSVWriter(new FileWriter("result.csv"));
+            writer = new CSVWriter(new FileWriter("result.csv", false));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -56,7 +59,7 @@ public class Main {
                 int choice = parseInt(scanner.nextLine());
 
                 if (choice == 1) createGroup(scanner);
-                else if (choice == 2) createSubgroup(scanner);
+                else if (choice == 2) /*createSubgroup(scanner);*/ return;
                 else if (choice == 3) saveCSV();
                 else if (choice == 0) return;
                 else System.out.println("Неверный выбор!");
@@ -73,8 +76,10 @@ public class Main {
             List<String[]> data = reader.readAll();
             if (data.isEmpty()) throw new IOException("Файл пустой!");
 
-            headers = data.getFirst();
-            csvData = data.subList(1, data.size());
+            headers = new String[data.getFirst().length + 1];
+            headers[0] = "Group";
+            System.arraycopy(data.getFirst(), 0, headers, 1, data.getFirst().length);
+            unclusteredKeywords.addAll(data.subList(1, data.size())); // Сохраняем все строки как некластеризованные
         }
     }
 
@@ -83,7 +88,7 @@ public class Main {
         String regex = scanner.nextLine();
 
         Pattern pattern = Pattern.compile(regex);
-        List<String[]> matchingKeywords = csvData.stream()
+        List<String[]> matchingKeywords = unclusteredKeywords.stream()
                 .filter(row -> pattern.matcher(row[0]).find())
                 .collect(Collectors.toList());
 
@@ -93,16 +98,16 @@ public class Main {
         }
 
         int groupId = ++currentGroupId;
-        groups.put(regex + " - " + groupId, matchingKeywords.stream().map(row -> row[0]).collect(Collectors.toList()));
+        groups.put(regex + " - " + groupId, matchingKeywords); // Добавляем строки в новую группу
         groupHierarchy.put(groupId, new ArrayList<>());
 
-        csvData.removeAll(matchingKeywords);
+        unclusteredKeywords.removeAll(matchingKeywords); // Удаляем из некластеризованных
 
         System.out.println("Группа " + groupId + " создана с " + matchingKeywords.size() + " ключевыми словами.");
-        saveCSV();
     }
 
-    private static void createSubgroup(Scanner scanner) {
+
+    /*private static void createSubgroup(Scanner scanner) {
         System.out.println("Введите индекс группы для создания подгруппы:");
         int parentId = parseInt(scanner.nextLine());
 
@@ -134,18 +139,25 @@ public class Main {
         parentKeywords.removeAll(matchingKeywords);
 
         System.out.println("Подгруппа " + groupId + " создана внутри группы " + parentId);
-    }
+    }*/
 
     private static void saveCSV() {
         List<String[]> newCsvData = new ArrayList<>();
         newCsvData.add(headers);
 
-        for (Map.Entry<String, List<String>> entry : groups.entrySet()) {
+        for (Map.Entry<String, List<String[]>> entry : groups.entrySet()) {
             String groupPath = /*getGroupPath(entry.getKey());*/ entry.getKey();
-            for (String keyword : entry.getValue()) {
-                newCsvData.add(new String[]{groupPath, keyword});
+            for (String[] keyword : entry.getValue()) {
+                String[] temp = new String[keyword.length + 1];
+                temp[0] = groupPath;
+                System.arraycopy(keyword, 0, temp, 1, keyword.length);
+                newCsvData.add(temp);
             }
         }
+
+        /*for (String[] row : csvData) {
+            newCsvData.add(new String[]{"", row[0]}); // Пустая группа для некластеризованных
+        }*/
 
         writer.writeAll(newCsvData);
         System.out.println("CSV файл успешно обновлен!");
